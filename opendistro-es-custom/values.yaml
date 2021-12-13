@@ -1,0 +1,336 @@
+# Copyright 2019 Viasat, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License").
+# You may not use this file except in compliance with the License.
+# A copy of the License is located at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# or in the "license" file accompanying this file. This file is distributed
+# on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+# express or implied. See the License for the specific language governing
+# permissions and limitations under the License.
+
+kibana:
+  enabled: true
+  image: amazon/opendistro-for-elasticsearch-kibana
+  imageTag: 1.13.1
+  replicas: 1
+  port: 5601
+  externalPort: 443
+  resources:
+    limits:
+      cpu: 2500m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  readinessProbe: []
+  livenessProbe: []
+
+  elasticsearchAccount:
+    secret: elasticsearch-account
+    keyPassphrase:
+      enabled: false
+
+  extraEnvs: []
+
+  ssl:
+    kibana:
+      enabled: true
+      existingCertSecret: kibana-certs
+    elasticsearch:
+      enabled: true
+      existingCertSecret: elasticsearch-rest-certs
+
+ 
+  configDirectory: "/usr/share/kibana/config"
+  certsDirectory: "/usr/share/kibana/certs"
+
+  service:
+    type: ClusterIP
+    annotations: {}
+
+  config: 
+    opendistro_security.multitenancy.enabled: true
+    opendistro_security.multitenancy.tenants.preferred: ["Private", "Global"]
+    opendistro_security.auth.type: "openid"
+    opendistro_security.openid.connect_url: "https://login.microsoftonline.com/<REPTENANTID>/v2.0/.well-known/openid-configuration"
+    opendistro_security.openid.client_id: "repclientid"
+    opendistro_security.openid.client_secret: "repclientsecret"
+    opendistro_security.openid.base_redirect_url: "https://repredirecturl.example.com"
+    opendistro_security.readonly_mode.roles: ["kibana_read_only"]
+    opendistro_security.cookie.ttl: 0
+
+
+    server.name: kibana
+    server.host: "0"
+    elasticsearch.ssl.verificationMode: none
+
+    ## Replace with Elasticsearch DNS name picked during Service deployment
+    elasticsearch.hosts: ${ELASTICSEARCH_HOSTS}
+    #elasticsearch.requestTimeout: 120000
+    #elasticsearch.healthCheck.delay: 100000
+    elasticsearch.username: ${ELASTICSEARCH_USERNAME}
+    elasticsearch.password: ${ELASTICSEARCH_PASSWORD}
+    elasticsearch.requestHeadersWhitelist: ["securitytenant", "x-forwarded-by", "Authorization", "jwtToken", "host"," x-request-id", "x-real-ip", "x-forwarded-for", "x-forwarded-host", "x-forwarded-port", "x-forwarded-proto", "x-scheme", "kbn-version", "content-type", "sec-fetch-site", "sec-fetch-mode", "sec-fetch-dest", "accept-encoding"]
+    logging.verbose: true
+
+    ## Kibana TLS Config
+    server.ssl.enabled: true
+    server.ssl.key: /usr/share/kibana/certs/kibana-key.pem
+    server.ssl.certificate: /usr/share/kibana/certs/kibana-crt.pem
+    elasticsearch.ssl.certificateAuthorities: /usr/share/kibana/certs/kibana-root-ca.pem
+
+
+    opendistro_security.cookie.secure: true
+    opendistro_security.cookie.password: ${COOKIE_PASS}
+    opendistro_security.allow_client_certificates: true
+    elasticsearch.ssl.certificate: /usr/share/kibana/certs/elk-rest-crt.pem
+    elasticsearch.ssl.key: /usr/share/kibana/certs/elk-rest-key.pem
+    elasticsearch.ssl.certificateAuthorities: ["/usr/share/kibana/certs/elk-rest-root-ca.pem"]
+
+  ## Node labels for pod assignment
+  ## ref: https://kubernetes.io/docs/user-guide/node-selection/
+  #
+  nodeSelector: {}
+
+  ## Tolerations for pod assignment
+  ## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+  ##
+  tolerations: []
+
+  affinity: {}
+
+  serviceAccount:
+    ## Specifies whether a ServiceAccount should be created
+    create: true
+    ## The name of the ServiceAccount to use.
+    ## If not set and create is true, a name is generated using the fullname template
+    name:
+
+
+global:
+  clusterName: elasticsearch
+
+  psp:
+    create: true
+
+  rbac:
+    enabled: true
+  ## Optionally specify an array of imagePullSecrets.
+  ## Secrets must be manually created in the namespace.
+  # imagePullSecrets:
+  #   - myRegistryKeySecretName
+
+
+elasticsearch:
+  ## Used when deploying hot/warm architecture. Allows second aliased deployment to find cluster.
+  ## Default {{ template opendistro-es.fullname }}-discovery.
+  discoveryOverride: ""
+  securityConfig:
+    enabled: true
+    path: "/usr/share/elasticsearch/plugins/opendistro_security/securityconfig"
+    actionGroupsSecret: action-groups
+    configSecret: security-config
+    internalUsersSecret: internal-users-config
+    rolesSecret: roles
+    rolesMappingSecret: role-mapping
+    tenantsSecret:
+
+  extraEnvs: []
+
+  initContainer:
+    image: busybox
+    imageTag: 1.27.2
+
+  ## Set optimal sysctl's. This requires privilege. Can be disabled if
+  ## the system has already been preconfigured.
+  sysctl:
+    enabled: true
+
+  ssl:
+    ## TLS is mandatory for the transport layer and can not be disabled
+    transport:
+      enabled: true
+      existingCertSecret: elasticsearch-transport-certs
+    rest:
+      enabled: true
+      existingCertSecret: elasticsearch-rest-certs
+    admin:
+      enabled: true
+      existingCertSecret: elasticsearch-admin-certs
+
+  master:
+    enabled: true
+    replicas: 3
+    updateStrategy: "RollingUpdate"
+
+    ## Enable persistence using Persistent Volume Claims
+    ## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+    ##
+    persistence:
+      enabled: true
+      ## A manually managed Persistent Volume and Claim
+      ## Requires persistence.enabled: true
+      ## If defined, PVC must be created manually before volume will be bound
+      ##
+      # existingClaim:
+
+      ## The subdirectory of the volume to mount to, useful in dev environments
+      ## and one PV for multiple services.
+      ##
+      subPath: ""
+
+      ## Open Distro master Persistent Volume Storage Class
+      ## If defined, storageClassName: <storageClass>
+      ## If set to "-", storageClassName: "", which disables dynamic provisioning
+      ## If undefined (the default) or set to null, no storageClassName spec is
+      ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
+      ##   GKE, AWS & OpenStack)
+      ##
+      # storageClass: "-"
+      accessModes:
+        - ReadWriteOnce
+      size: 100Gi
+      annotations: {}
+
+    resources: {}
+    javaOpts: "-Xms6g -Xmx6g"
+    podDisruptionBudget:
+      enabled: false
+      minAvailable: 1
+    readinessProbe: []
+    livenessProbe:
+      tcpSocket:
+        port: transport
+      initialDelaySeconds: 60
+      periodSeconds: 10
+    nodeSelector: {}
+    tolerations: []
+    ## Anti-affinity to disallow deploying client and master nodes on the same worker node
+    affinity: {}
+    #  podAntiAffinity:
+    #    requiredDuringSchedulingIgnoredDuringExecution:
+    #      - topologyKey: "kubernetes.io/hostname"
+    #        labelSelector:
+    #          matchLabels:
+    #            role: master
+    podAnnotations: {}
+
+  config:
+    ## Example Config
+    opendistro_security.allow_unsafe_democertificates: false
+    opendistro_security.allow_default_init_securityindex: true
+    opendistro_security.audit.type: internal_elasticsearch
+    opendistro_security.enable_snapshot_restore_privilege: true
+    opendistro_security.check_snapshot_restore_write_privileges: true
+    cluster.routing.allocation.disk.threshold_enabled: false
+    opendistro_security.audit.config.disabled_rest_categories: NONE
+    opendistro_security.audit.config.disabled_transport_categories: NONE
+    opendistro_security.restapi.roles_enabled: ["all_access", "security_rest_api_access"]
+    opendistro_security.audit.ignore_users:
+      - kibanaserver
+      - admin
+      - logstash
+
+    # cluster:
+    #   name: ${CLUSTER_NAME}
+    # node:
+    #   master: ${NODE_MASTER}
+    #   data: ${NODE_DATA}
+    #   name: ${NODE_NAME}
+    #   ingest: ${NODE_INGEST}
+    #   max_local_storage_nodes: 1
+    #   attr.box_type: hot
+
+    # processors: ${PROCESSORS:1}
+
+    # network.host: ${NETWORK_HOST}
+
+    # thread_pool.bulk.queue_size: 800
+
+    # path:
+    #   data: /usr/share/elasticsearch/data
+    #   logs: /usr/share/elasticsearch/logs
+
+    #http:
+    #   enabled: ${HTTP_ENABLE}
+    #  compression: true
+    http.cors.enabled: true
+    http.cors.allow-origin: "*"
+    http.max_header_size: 16kb
+    http.cors.allow-credentials: true
+    http.cors.allow-headers: "Authorization, kbn-xsrf, Content-Type, Content-Length, X-Requested-With"
+
+    # discovery:
+    #   zen:
+    #     ping.unicast.hosts: ${DISCOVERY_SERVICE}
+    #     minimum_master_nodes: ${NUMBER_OF_MASTERS}
+
+    opendistro_security.nodes_dn:
+      - 'CN=*-elk-*,OU=Test,O=MyORG,L=Bangalore,ST=KA,C=IN'
+
+
+    # # TLS Configuration Transport Layer
+    opendistro_security.ssl.transport.pemcert_filepath: elk-transport-crt.pem
+    opendistro_security.ssl.transport.pemkey_filepath: elk-transport-key.pem
+    opendistro_security.ssl.transport.pemtrustedcas_filepath: elk-transport-root-ca.pem
+    opendistro_security.ssl.transport.enforce_hostname_verification: false
+
+    # # TLS Configuration REST Layer
+    opendistro_security.ssl.http.enabled: true
+    opendistro_security.ssl.http.pemcert_filepath: elk-rest-crt.pem
+    opendistro_security.ssl.http.pemkey_filepath: elk-rest-key.pem
+    opendistro_security.ssl.http.pemtrustedcas_filepath: elk-rest-root-ca.pem
+
+    opendistro_security.authcz.admin_dn:
+      - CN=admin,OU=Test,O=MyORG,L=Bangalore,ST=KA,C=IN
+
+  log4jConfig: ""
+
+  loggingConfig:
+    ## Default config
+    ## you can override this using by setting a system property, for example -Des.logger.level=DEBUG
+    es.logger.level: INFO
+    rootLogger: ${es.logger.level}, console
+    logger:
+      ## log action execution errors for easier debugging
+      action: DEBUG
+      ## reduce the logging for aws, too much is logged under the default INFO
+      com.amazonaws: WARN
+    appender:
+      console:
+        type: console
+        layout:
+          type: consolePattern
+          conversionPattern: "[%d{ISO8601}][%-5p][%-25c] %m%n"
+
+  transportKeyPassphrase:
+    enabled: false
+    passPhrase:
+
+  sslKeyPassphrase:
+    enabled: false
+    passPhrase:
+
+  maxMapCount: 262144
+
+  image: amazon/opendistro-for-elasticsearch
+  imageTag: 1.13.1
+  ## Specifies the image pull policy. Can be "Always" or "IfNotPresent" or "Never".
+  ## Default to "Always".
+  imagePullPolicy: ""
+
+  configDirectory: /usr/share/elasticsearch/config
+
+  serviceAccount:
+    ## Specifies whether a ServiceAccount should be created
+    create: true
+    ## The name of the ServiceAccount to use.
+    ## If not set and create is true, a name is generated using the fullname template
+    name:
+
+
+nameOverride: "elk"
+fullnameOverride: ""

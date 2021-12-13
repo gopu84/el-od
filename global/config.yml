@@ -1,0 +1,49 @@
+---
+_meta:
+  type: "config"
+  config_version: 2
+
+config:
+  dynamic:
+    # Set filtered_alias_mode to 'disallow' to forbid more than 2 filtered aliases per index
+    # Set filtered_alias_mode to 'warn' to allow more than 2 filtered aliases per index but warns about it (default)
+    # Set filtered_alias_mode to 'nowarn' to allow more than 2 filtered aliases per index silently
+    #filtered_alias_mode: warn
+    do_not_fail_on_forbidden: false
+    # kibana:
+    # #Kibana multitenancy
+    #   multitenancy_enabled: true
+    #   server_username: kibanaserver
+    #   index: '.kibana'
+    http:
+      anonymous_auth_enabled: false
+      xff:
+        enabled: false
+        #internalProxies: '192\.168\.0\.10|192\.168\.0\.11' # regex pattern
+        internalProxies: '.*' # trust all internal proxies, regex pattern
+        remoteIpHeader:  'x-forwarded-for'
+    authc:
+      basic_internal_auth_domain:
+        http_enabled: true
+        transport_enabled: true
+        order: 1
+        http_authenticator:
+          type: basic
+          challenge: false
+        authentication_backend:
+          type: internal
+      openid_auth_domain:
+        http_enabled: true
+        transport_enabled: true
+        order: 2
+        http_authenticator:
+          type: openid
+          challenge: false
+          config:
+            subject_key: preferred_username
+            verify_hostnames: false
+            enable_ssl: true
+            roles_key: roles
+            openid_connect_url: https://login.microsoftonline.com/<REPTENANTID>/v2.0/.well-known/openid-configuration
+        authentication_backend:
+           type: noop    

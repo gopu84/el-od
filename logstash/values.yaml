@@ -1,0 +1,314 @@
+---
+replicas: 2
+
+# Allows you to add any config files in /usr/share/logstash/config/
+# such as logstash.yml and log4j2.properties
+#
+# Note that when overriding logstash.yml, `http.host: 0.0.0.0` should always be included
+# to make default probes work.
+logstashConfig:
+  logstash.yml: |
+    http.host: 0.0.0.0
+#  logstash.yml: |
+#    key:
+#      nestedkey: value
+#  log4j2.properties: |
+#    key = value
+  template.json: |
+    {
+      "index_patterns" : "*",
+      "version" : 60001,
+      "settings" : {
+      "index.refresh_interval" : "5s",
+      "number_of_shards": 1,
+      "index.mapping.total_fields.limit": 5000
+      }
+    }
+# Allows you to add any pipeline files in /usr/share/logstash/pipeline/
+### ***warn*** there is a hardcoded logstash.conf in the image, override it first
+#logstashPipeline:
+#  logstash.conf: |
+
+pipeline:
+  enabled: true
+           
+extraEnvs:
+  - name: ELASTIC_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: elasticsearch-account
+        key: password
+  - name: ELASTIC_USERNAME
+    valueFrom:
+      secretKeyRef:
+        name: elasticsearch-account
+        key: username
+  - name: LS_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: elasticsearch-account
+        key: ls_password
+  - name: LS_USERNAME
+    valueFrom:
+      secretKeyRef:
+        name: elasticsearch-account
+        key: ls_username
+
+
+# Allows you to load environment variables from kubernetes secret or config map
+envFrom: []
+# - secretRef:
+#     name: env-secret
+# - configMapRef:
+#     name: config-map
+
+# A list of secrets and their paths to mount inside the pod
+secretMounts:
+  - name: es-client-root-cert
+    secretName: es-client-root-cert
+    path: /usr/share/logstash/config/es-client
+
+  - name: logstash-certs
+    secretName: logstash-certs
+    path: /usr/share/logstash/config/cert
+
+image: "example.azurecr.io/logstash/logstash-oss-blob"
+imageTag: "6.8.10-new"
+imagePullPolicy: "IfNotPresent"
+imagePullSecrets: 
+  - name: my-registry
+
+podAnnotations: {}
+
+# additionals labels
+labels: {}
+
+esmaster: "elk-master:9200"
+logstashJavaOpts: "-Xmx1g -Xms1g"
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "1536Mi"
+  limits:
+    cpu: "3000m"
+    memory: "4096Mi"
+
+volumeClaimTemplate:
+  accessModes: [ "ReadWriteOnce" ]
+  resources:
+    requests:
+      storage: 5Gi
+  # storageClassName: azurefile-grs
+
+rbac:
+  create: false
+  serviceAccountName: ""
+
+podSecurityPolicy:
+  create: false
+  name: ""
+  spec:
+    privileged: true
+    fsGroup:
+      rule: RunAsAny
+    runAsUser:
+      rule: RunAsAny
+    seLinux:
+      rule: RunAsAny
+    supplementalGroups:
+      rule: RunAsAny
+    volumes:
+      - secret
+      - configMap
+      - persistentVolumeClaim
+
+persistence:
+  enabled: true
+  annotations: {}
+
+extraVolumes: ""
+  # - name: extras
+  #   emptyDir: {}
+
+extraVolumeMounts: ""
+  # - name: extras
+  #   mountPath: /usr/share/extras
+  #   readOnly: true
+
+extraContainers: ""
+  # - name: do-something
+  #   image: busybox
+  #   command: ['do', 'something']
+
+extraInitContainers: ""
+  # - name: do-something
+  #   image: busybox
+  #   command: ['do', 'something']
+
+# This is the PriorityClass settings as defined in
+# https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/#priorityclass
+priorityClassName: ""
+
+# By default this will make sure two pods don't end up on the same node
+# Changing this to a region would allow you to spread pods across regions
+antiAffinityTopologyKey: "kubernetes.io/hostname"
+
+# Hard means that by default pods will only be scheduled if there are enough nodes for them
+# and that they will never end up on the same node. Setting this to soft will do this "best effort"
+antiAffinity: "hard"
+
+# This is the node affinity settings as defined in
+# https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#node-affinity-beta-feature
+nodeAffinity: {}
+
+# The default is to deploy all pods serially. By setting this to parallel all pods are started at
+# the same time when bootstrapping the cluster
+podManagementPolicy: "Parallel"
+
+httpPort: 9600
+
+# Custom ports to add to logstash
+extraPorts: []
+  # - name: beats
+  #   containerPort: 5001
+  
+updateStrategy: RollingUpdate
+
+# This is the max unavailable setting for the pod disruption budget
+# The default value of 1 will make sure that kubernetes won't allow more than 1
+# of your pods to be unavailable during maintenance
+maxUnavailable: 1
+
+podSecurityContext:
+  fsGroup: 1000
+  runAsUser: 1000
+
+securityContext:
+  capabilities:
+    drop:
+    - ALL
+  # readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# How long to wait for logstash to stop gracefully
+terminationGracePeriod: 120
+
+# Probes
+# Default probes are using `httpGet` which requires that `http.host: 0.0.0.0` is part of
+# `logstash.yml`. If needed probes can be disabled or overrided using the following syntaxes:
+#
+# disable livenessProbe
+# livenessProbe: null
+#
+# replace httpGet default readinessProbe by some exec probe
+# readinessProbe:
+#   httpGet: null
+#   exec:
+#     command:
+#       - curl
+#      - localhost:9600
+
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 300
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 60
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 3
+
+## Use an alternate scheduler.
+## ref: https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
+##
+schedulerName: ""
+
+nodeSelector: {}
+tolerations: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+lifecycle: {}
+  # preStop:
+  #   exec:
+  #     command: ["/bin/sh", "-c", "echo Hello from the postStart handler > /usr/share/message"]
+  # postStart:
+  #   exec:
+  #     command: ["/bin/sh", "-c", "echo Hello from the postStart handler > /usr/share/message"]
+
+service:
+  type: LoadBalancer
+  ports:
+    - name: beats
+      port: 5044
+      protocol: TCP
+      targetPort: 5044
+    - name: beats1
+      port: 5545
+      protocol: TCP
+      targetPort: 5045
+    - name: beats2
+      port: 5546
+      protocol: TCP
+      targetPort: 5046
+    - name: beats3
+      port: 5547
+      protocol: TCP
+      targetPort: 5047
+    - name: beats4
+      port: 5548
+      protocol: TCP
+      targetPort: 5048
+    - name: beats5
+      port: 5549
+      protocol: TCP
+      targetPort: 5049
+    - name: beats6
+      port: 5550
+      protocol: TCP
+      targetPort: 5050
+    - name: beats7
+      port: 5551
+      protocol: TCP
+      targetPort: 5051  
+    - name: http
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+    - name: http1
+      port: 8581
+      protocol: TCP
+      targetPort: 8081
+    - name: http2
+      port: 8582
+      protocol: TCP
+      targetPort: 8082
+    - name: http3
+      port: 8583
+      protocol: TCP
+      targetPort: 8083
+    - name: http4
+      port: 8584
+      protocol: TCP
+      targetPort: 8084
+    - name: http5
+      port: 8585
+      protocol: TCP
+      targetPort: 8085
+    - name: http6
+      port: 8586
+      protocol: TCP
+      targetPort: 8086
